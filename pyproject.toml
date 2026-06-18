@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "watchpid"
+dynamic = ["version"]
+description = "Small stdlib-only helpers for watching process exit."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+authors = [{ name = "watchpid contributors" }]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+]
+
+dependencies = []
+
+[project.optional-dependencies]
+test = [
+  "pytest>=7.4",
+]
+dev = [
+  "pytest>=7.4",
+  "fastship",
+  "build",
+  "twine",
+]
+
+[project.urls]
+Homepage = "https://github.com/AnswerDotAI/watchpid"
+
+[tool.setuptools.dynamic]
+version = { attr = "watchpid.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["watchpid"]
