@@ -1,4 +1,5 @@
-__version__ = "0.1.0"
+__version__ = "0.1.1"
+
 
 import errno, logging, os, select, sys, threading, time
 from collections.abc import Callable
