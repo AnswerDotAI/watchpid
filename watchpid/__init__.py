@@ -1,24 +1,41 @@
 __version__ = "0.1.0"
 
-import errno, os, select, threading, time
+import errno, logging, os, select, sys, threading, time
 from collections.abc import Callable
 
 __all__ = ["__version__", "parent_pid", "wait_pid", "watch_parent", "watch_pid"]
 
+_log = logging.getLogger("watchpid")
+
 
 def parent_pid(env:str = "JPY_PARENT_PID")->int|None:
-    "Return parent pid from `env`, or None when unset/invalid."
+    "Return parent pid from `env`, or None when unset, invalid, or <=1 (e.g. init)."
     try: pid = int(os.environ.get(env) or 0)
     except ValueError: return None
     return pid if pid > 1 else None
 
 
-def _pid_exists(pid:int)->bool:
-    try:
-        os.kill(pid, 0)
-        return True
-    except ProcessLookupError: return False
-    except PermissionError: return True
+if sys.platform == "win32":
+    def _pid_exists(pid:int)->bool:
+        "True if `pid` is running. Uses OpenProcess; `os.kill(pid,0)` would kill it on Windows."
+        import ctypes
+        k = ctypes.WinDLL("kernel32", use_last_error=True)
+        PROCESS_QUERY_LIMITED_INFORMATION, STILL_ACTIVE, ERROR_ACCESS_DENIED = 0x1000, 259, 5
+        h = k.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not h: return ctypes.get_last_error() == ERROR_ACCESS_DENIED
+        try:
+            code = ctypes.c_ulong()
+            if not k.GetExitCodeProcess(h, ctypes.byref(code)): return True
+            return code.value == STILL_ACTIVE
+        finally: k.CloseHandle(h)
+else:
+    def _pid_exists(pid:int)->bool:
+        "True if `pid` is running (POSIX). Note: an unreaped child stays 'alive' until waited on."
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError: return False
+        except PermissionError: return True
 
 
 def _wait_pidfd(pid:int, timeout:float|None)->bool|None:
@@ -35,6 +52,7 @@ def _wait_pidfd(pid:int, timeout:float|None)->bool|None:
 
 def _wait_kqueue(pid:int, timeout:float|None)->bool|None:
     if not hasattr(select, "kqueue"): return None
+    kq = None
     try:
         kq = select.kqueue()
         event = select.kevent(pid, filter=select.KQ_FILTER_PROC,
@@ -45,8 +63,7 @@ def _wait_kqueue(pid:int, timeout:float|None)->bool|None:
         if exc.errno == errno.ESRCH: return True
         return None
     finally:
-        try: kq.close()
-        except UnboundLocalError: pass
+        if kq is not None: kq.close()
 
 
 def _wait_poll(pid:int, timeout:float|None, poll:float)->bool:
@@ -73,7 +90,9 @@ def watch_pid(pid:int, callback:Callable[[], None], *, timeout:float|None = None
     daemon:bool = True, name:str|None = None)->threading.Thread:
     "Run `callback` in a daemon thread when `pid` exits."
     def run():
-        if wait_pid(pid, timeout=timeout, poll=poll): callback()
+        try:
+            if wait_pid(pid, timeout=timeout, poll=poll): callback()
+        except Exception: _log.exception("watchpid callback for pid %s failed", pid)
     thread = threading.Thread(target=run, daemon=daemon, name=name or f"watchpid-{pid}")
     thread.start()
     return thread

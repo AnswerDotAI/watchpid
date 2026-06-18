@@ -35,7 +35,11 @@ from watchpid import watch_parent
 watch_parent(lambda: print("parent exited"))
 ```
 
-`watch_parent()` reads `JPY_PARENT_PID` by default. It returns `None` when the env var is unset or invalid.
+`watch_parent()` reads `JPY_PARENT_PID` by default. It returns `None` when the env var is unset, invalid, or `<= 1` (so `pid 1`/init is never watched).
+
+### Caveats
+
+- The event-based backends (`pidfd`, `kqueue`) detect exit reliably. The polling fallback uses pid liveness checks, so it is best-effort: it can't distinguish a reused pid, and an unreaped child process stays "alive" to the poller until it's `wait()`ed.
 
 ## API
 
