@@ -1,4 +1,5 @@
-__version__ = "0.1.1"
+__version__ = "0.1.2"
+
 
 
 import errno, logging, os, select, sys, threading, time
